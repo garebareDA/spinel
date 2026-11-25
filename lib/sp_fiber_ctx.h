@@ -26,7 +26,9 @@
 /* Windows takes the ucontext fallback, which lib/win32 provides: its x64
    ABI saves more registers, and a switch there also moves the stack bounds
    the thread's TEB holds. */
-#if (defined(__x86_64__) || defined(__aarch64__)) && !defined(_WIN32)
+#if (defined(__x86_64__) || defined(__aarch64__) || \
+     ((defined(__powerpc__) || defined(__PPC__)) && !defined(__powerpc64__) && !defined(__PPC64__) && defined(__ELF__) && !defined(__LITTLE_ENDIAN__))) \
+    && !defined(_WIN32)
   #define SP_FIBER_ASM 1
 #else
   #define SP_FIBER_ASM 0
@@ -58,7 +60,7 @@ typedef struct sp_fiber_ctx { void *sp; const void *asan_lo; size_t asan_size; }
 typedef struct sp_fiber_ctx { void *sp; } sp_fiber_ctx;
 #endif
 
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__powerpc__) || defined(__PPC__)
 /* The first code a fresh context runs (sp_fiber.c's asm): branches to the
    entry in x19 with lr and fp zero */
 void sp_ctx_start(void);
@@ -74,6 +76,17 @@ static inline void sp_ctx_make(sp_fiber_ctx *ctx, void *base, size_t size,
   *--s = (void *)entry;                  /* `ret` target, at top-16 */
   for (int i = 0; i < 6; i++) *--s = 0;  /* rbp, rbx, r12, r13, r14, r15 */
   ctx->sp = s;                           /* top-64 */
+#elif defined(__powerpc__) || defined(__PPC__)
+  /* Mirror the 32-bit PowerPC (SysV EABI) sp_ctx_swap frame: 240 bytes holding
+     the back chain (slot 0), lr (4), cr (8), f14..f31 (16..159) and r14..r31
+     (160..231). The first swap loads entry into r14 and sp_ctx_start into lr;
+     sp_ctx_start enters entry with lr zero. 16 bytes are kept free above the
+     frame, zeroed, so that entry's own frame chains to a zero back chain. */
+  uint32_t *s = (uint32_t *)(top - 16 - 240);
+  for (int i = 0; i < 60 + 4; i++) s[i] = 0;
+  s[(160 / 4)] = (uint32_t)(uintptr_t)entry;           /* r14 */
+  s[1] = (uint32_t)(uintptr_t)sp_ctx_start;            /* lr */
+  ctx->sp = s;
 #else /* __aarch64__ */
   /* Mirror the aarch64 sp_ctx_swap frame: 160 bytes holding x19..x30 (12) then
      d8..d15 (8). On the first swap the ldp's load entry into x19 (slot 0) and
