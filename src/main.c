@@ -552,6 +552,10 @@ static void usage(void) {
     "  --target=wasm32-wasi  Build a WebAssembly module for a WASI host with the\n"
     "              wasi-sdk at $WASI_SDK (default /opt/wasi-sdk); Integer is 32-bit,\n"
     "              and Fiber, Thread, processes and sockets are not available there\n"
+    "  --int-bits=32|64  Judge Integer as this wide whatever the C compiler is, for\n"
+    "              emitting C (-c) that another, cross, compiler builds (a Wii or other\n"
+    "              32-bit board built on a 64-bit host); a bare --cc names such a\n"
+    "              compiler instead\n"
     "  --exceptions=abort  With --target=wasm32-wasi, for a host without wasm\n"
     "              exception handling: a raise traps, and rescue, retry, catch and a\n"
     "              break or return that leaves a block through a frame are refused\n"
@@ -979,6 +983,7 @@ int main(int argc, char **argv) {
      host (wasmtime, Node's WASI, a browser shim), built by the wasi-sdk's
      clang against the runtime archive in lib/wasm32-wasi/. */
   int target_wasi = 0;
+  int force_int_bits = 0;   /* --int-bits=: the target's Integer width, when told */
   /* --exceptions=abort (wasm32-wasi only): a runtime without setjmp/longjmp,
      for a host that has no exception-handling proposal. A raise traps; the
      constructs that need a frame to catch it are refused (see lib/sp_setjmp.h). */
@@ -1008,6 +1013,11 @@ int main(int argc, char **argv) {
     else if (!strncmp(a, "--jobs=", 7))   { cc_jobs = atoi(a + 7); i++; }
     else if (!strncmp(a, "--split-parts=", 14)) { g_split_parts = atoi(a + 14); i++; }
     else if (incremental_opt(a))           { i++; }
+    else if (!strncmp(a, "--int-bits=", 11)) {
+      force_int_bits = atoi(a + 11);
+      if (force_int_bits != 32 && force_int_bits != 64) { fprintf(stderr, "spinel: --int-bits must be 32 or 64\n"); return 1; }
+      i++;
+    }
     else if (!strncmp(a, "--target=", 9)) {
       if (sp_streq(a + 9, "wasm32-wasi")) target_wasi = 1;
       else if (sp_streq(a + 9, "native")) target_wasi = 0;
@@ -1378,6 +1388,7 @@ int main(int argc, char **argv) {
 #if defined(__i386__)
   else target_i386 = 1;
 #endif
+  if (force_int_bits) sp_target_int_bits = force_int_bits;
   double tm_front = sp_timing_now();
   NodeTable *nt = sp_parse_file(source, argv[0]);
   if (eval_path[0]) remove(eval_path);

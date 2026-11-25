@@ -149,6 +149,49 @@ __asm__(
   "  mov x30, xzr\n"
   "  br x19\n"
 );
+#elif defined(__powerpc__) || defined(__PPC__)
+/* 32-bit PowerPC, SysV EABI (Wii / devkitPPC). Saves the callee-saved r14..r31,
+   f14..f31, cr and lr in a 240-byte frame (layout: see sp_fiber_ctx.h). r2 and
+   r13 (small-data bases) are the same for every context and are not saved. */
+__asm__(
+  ".text\n"
+  ".globl " SP_CTX_SYM "\n"
+  SP_CTX_SYM ":\n"
+  "  mflr 0\n"
+  "  stwu 1, -240(1)\n"
+  "  stw 0, 4(1)\n"
+  "  mfcr 0\n"
+  "  stw 0, 8(1)\n"
+  "  stfd 14, 16(1)\n  stfd 15, 24(1)\n  stfd 16, 32(1)\n  stfd 17, 40(1)\n"
+  "  stfd 18, 48(1)\n  stfd 19, 56(1)\n  stfd 20, 64(1)\n  stfd 21, 72(1)\n"
+  "  stfd 22, 80(1)\n  stfd 23, 88(1)\n  stfd 24, 96(1)\n  stfd 25, 104(1)\n"
+  "  stfd 26, 112(1)\n  stfd 27, 120(1)\n  stfd 28, 128(1)\n  stfd 29, 136(1)\n"
+  "  stfd 30, 144(1)\n  stfd 31, 152(1)\n"
+  "  stmw 14, 160(1)\n"
+  "  stw 1, 0(3)\n"              /* from->sp = r1 */
+  "  lwz 1, 0(4)\n"              /* r1 = to->sp   */
+  "  lmw 14, 160(1)\n"
+  "  lfd 14, 16(1)\n  lfd 15, 24(1)\n  lfd 16, 32(1)\n  lfd 17, 40(1)\n"
+  "  lfd 18, 48(1)\n  lfd 19, 56(1)\n  lfd 20, 64(1)\n  lfd 21, 72(1)\n"
+  "  lfd 22, 80(1)\n  lfd 23, 88(1)\n  lfd 24, 96(1)\n  lfd 25, 104(1)\n"
+  "  lfd 26, 112(1)\n  lfd 27, 120(1)\n  lfd 28, 128(1)\n  lfd 29, 136(1)\n"
+  "  lfd 30, 144(1)\n  lfd 31, 152(1)\n"
+  "  lwz 0, 8(1)\n"
+  "  mtcr 0\n"
+  "  lwz 0, 4(1)\n"
+  "  mtlr 0\n"
+  "  addi 1, 1, 240\n"
+  "  blr\n"
+  /* A fresh context's first swap returns here: the entry is in r14, and it is
+     entered with lr zero so an unwinder stops at its frame. */
+  ".p2align 2\n"
+  ".globl " SP_CTX_START_SYM "\n"
+  SP_CTX_START_SYM ":\n"
+  "  li 0, 0\n"
+  "  mtlr 0\n"
+  "  mtctr 14\n"
+  "  bctr\n"
+);
 #endif
 #ifdef SP_ASAN
 /* The switch, announced: the sanitizer is told the stack it goes to before
